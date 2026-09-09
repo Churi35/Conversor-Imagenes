@@ -114,7 +114,7 @@ La estructura resultante será aproximadamente:
 
 ```text
 Image Converter/
-├── image_converter_v3.py
+├── image_converter.py
 ├── README.md
 └── .venv/
     ├── bin/
@@ -278,7 +278,7 @@ BMP
 TIFF
 ```
 
-[Modo convertir una imagen](docs/convertir_imagen.png)
+![Modo convertir una imagen](docs/convertir_imagen.png)
 
 
 ---
@@ -337,7 +337,7 @@ Convertidas: N
 Errores: N
 ```
 
-[Modo convertir una carpeta](docs/convertir_carpeta.png)
+![Modo convertir una carpeta](docs/convertir_carpeta.png)
 
 ---
 
@@ -396,7 +396,7 @@ Esto permite convertir correctamente imágenes como PNG con transparencia hacia 
 Una vez descargado el programa, ejecutar:
 
 ```bash
-python3 image_converter_v3.py
+python3 image_converter.py
 ```
 
 En la primera ejecución puede aparecer:
@@ -451,5 +451,5 @@ sudo apt install python3.12-venv
 Después:
 
 ```bash
-python3 image_converter_v3.py
+python3 image_converter.py
 ```
